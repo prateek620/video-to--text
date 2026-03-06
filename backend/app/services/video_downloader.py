@@ -76,9 +76,10 @@ def download_from_url(
         "noplaylist": not playlist,
         "quiet": True,
         "no_warnings": True,
+        "format": "bestvideo[ext=mp4]+bestaudio[ext=m4a]/bestvideo+bestaudio/best",
+        "merge_output_format": "mp4",
     }
 
-    # Pass browser cookies to bypass YouTube bot detection
     if cookies_from_browser:
         ydl_opts["cookiesfrombrowser"] = (cookies_from_browser,)
 
@@ -96,7 +97,8 @@ def download_from_url(
             if not item:
                 continue
             filename = ydl.prepare_filename(item)
-            paths.append(Path(filename))
+            path = Path(filename).with_suffix(".mp4")
+            paths.append(path)
             metadata.append(
                 VideoMetadata(
                     title=item.get("title"),
