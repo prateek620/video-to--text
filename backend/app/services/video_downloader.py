@@ -3,9 +3,11 @@ from __future__ import annotations
 from dataclasses import dataclass
 from enum import Enum
 from pathlib import Path
+from typing import Any
 from urllib.parse import urlparse
 
 from yt_dlp import YoutubeDL
+from yt_dlp.utils import DownloadError
 
 
 class VideoSource(str, Enum):
@@ -33,6 +35,14 @@ class DownloadResult:
     is_playlist: bool
 
 
+class VideoDownloadDisabledError(RuntimeError):
+    pass
+
+
+class VideoDownloadError(RuntimeError):
+    pass
+
+
 def detect_source(url: str) -> VideoSource:
     parsed = urlparse(url)
     hostname = (parsed.hostname or "").lower()
@@ -56,33 +66,12 @@ def is_playlist(url: str) -> bool:
     return "list=" in lowered or "playlist" in lowered
 
 
-def download_from_url(
-    url: str,
-    output_dir: Path,
-    *,
-    allow_video_downloads: bool,
-    cookies_from_browser: str = "",
-) -> DownloadResult:
-    if not allow_video_downloads:
-        raise RuntimeError(
-            "Video downloads are disabled. Set V2K_ALLOW_VIDEO_DOWNLOADS to a truthy value to enable downloads."
-        )
+def _is_cookie_load_error(exc: DownloadError) -> bool:
+    message = str(exc).lower()
+    return "failed to load cookies" in message or "failed to decrypt with dpapi" in message
 
-    source = detect_source(url)
-    playlist = is_playlist(url)
-    output_template = str(output_dir / "%(title).200s-%(id)s.%(ext)s")
-    ydl_opts: dict = {
-        "outtmpl": output_template,
-        "noplaylist": not playlist,
-        "quiet": True,
-        "no_warnings": True,
-        "format": "bestvideo[ext=mp4]+bestaudio[ext=m4a]/bestvideo+bestaudio/best",
-        "merge_output_format": "mp4",
-    }
 
-    if cookies_from_browser:
-        ydl_opts["cookiesfrombrowser"] = (cookies_from_browser,)
-
+def _download_items(url: str, ydl_opts: dict[str, Any]) -> tuple[list[Path], list[VideoMetadata]]:
     with YoutubeDL(ydl_opts) as ydl:
         info = ydl.extract_info(url, download=True)
         entries = info.get("entries") if isinstance(info, dict) else None
@@ -106,5 +95,50 @@ def download_from_url(
                     source_url=item.get("webpage_url"),
                 )
             )
+    return paths, metadata
+
+
+def download_from_url(
+    url: str,
+    output_dir: Path,
+    *,
+    allow_video_downloads: bool,
+    cookies_from_browser: str = "",
+) -> DownloadResult:
+    if not allow_video_downloads:
+        raise VideoDownloadDisabledError(
+            "Video downloads are disabled. Set V2K_ALLOW_VIDEO_DOWNLOADS to a truthy value to enable downloads."
+        )
+
+    source = detect_source(url)
+    playlist = is_playlist(url)
+    output_template = str(output_dir / "%(title).200s-%(id)s.%(ext)s")
+    ydl_opts: dict[str, Any] = {
+        "outtmpl": output_template,
+        "noplaylist": not playlist,
+        "quiet": True,
+        "no_warnings": True,
+        "format": "bestvideo[ext=mp4]+bestaudio[ext=m4a]/bestvideo+bestaudio/best",
+        "merge_output_format": "mp4",
+    }
+
+    if cookies_from_browser:
+        ydl_opts["cookiesfrombrowser"] = (cookies_from_browser,)
+
+    try:
+        paths, metadata = _download_items(url, ydl_opts)
+    except DownloadError as exc:
+        if cookies_from_browser and _is_cookie_load_error(exc):
+            fallback_opts = ydl_opts.copy()
+            fallback_opts.pop("cookiesfrombrowser", None)
+            try:
+                paths, metadata = _download_items(url, fallback_opts)
+            except DownloadError as fallback_exc:
+                raise VideoDownloadError(
+                    "Failed to download the provided URL after retrying without browser cookies. "
+                    "Try another link or disable V2K_COOKIES_FROM_BROWSER in backend .env."
+                ) from fallback_exc
+        else:
+            raise VideoDownloadError("Failed to download the provided URL. Check the link and try again.") from exc
 
     return DownloadResult(paths=paths, metadata=metadata, source=source, is_playlist=playlist)
