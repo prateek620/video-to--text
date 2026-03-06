@@ -75,6 +75,26 @@ def _is_format_unavailable_error(exc: DownloadError) -> bool:
     return "requested format is not available" in str(exc).lower()
 
 
+def _format_fallback_options(base_options: dict[str, Any]) -> list[dict[str, Any]]:
+    retries: list[dict[str, Any]] = []
+
+    broader_mp4_options = base_options.copy()
+    broader_mp4_options["format"] = "bestvideo*+bestaudio/best"
+    retries.append(broader_mp4_options)
+
+    best_single_stream_options = base_options.copy()
+    best_single_stream_options["format"] = "best"
+    best_single_stream_options.pop("merge_output_format", None)
+    retries.append(best_single_stream_options)
+
+    default_selector_options = base_options.copy()
+    default_selector_options.pop("format", None)
+    default_selector_options.pop("merge_output_format", None)
+    retries.append(default_selector_options)
+
+    return retries
+
+
 def _download_items(url: str, ydl_opts: dict[str, Any]) -> tuple[list[Path], list[VideoMetadata]]:
     with YoutubeDL(ydl_opts) as ydl:
         info = ydl.extract_info(url, download=True)
@@ -90,7 +110,10 @@ def _download_items(url: str, ydl_opts: dict[str, Any]) -> tuple[list[Path], lis
             if not item:
                 continue
             filename = ydl.prepare_filename(item)
-            path = Path(filename).with_suffix(".mp4")
+            path = Path(filename)
+            merge_extension = ydl_opts.get("merge_output_format")
+            if isinstance(merge_extension, str) and merge_extension:
+                path = path.with_suffix(f".{merge_extension}")
             paths.append(path)
             metadata.append(
                 VideoMetadata(
@@ -133,16 +156,19 @@ def download_from_url(
         paths, metadata = _download_items(url, ydl_opts)
     except DownloadError as exc:
         if _is_format_unavailable_error(exc):
-            fallback_opts = ydl_opts.copy()
-            fallback_opts["format"] = "best[ext=mp4]/best"
-            fallback_opts.pop("merge_output_format", None)
-            try:
-                paths, metadata = _download_items(url, fallback_opts)
-            except DownloadError as fallback_exc:
-                raise VideoDownloadError(
-                    "Failed to download the provided URL. No compatible video format was available."
-                ) from fallback_exc
-            return DownloadResult(paths=paths, metadata=metadata, source=source, is_playlist=playlist)
+            for fallback_opts in _format_fallback_options(ydl_opts):
+                try:
+                    paths, metadata = _download_items(url, fallback_opts)
+                    return DownloadResult(paths=paths, metadata=metadata, source=source, is_playlist=playlist)
+                except DownloadError as fallback_exc:
+                    if not _is_format_unavailable_error(fallback_exc):
+                        raise VideoDownloadError(
+                            "Failed to download the provided URL. Check the link and try again."
+                        ) from fallback_exc
+
+            raise VideoDownloadError(
+                "Failed to download the provided URL. No compatible video format was available."
+            ) from exc
 
         if cookies_from_browser and _is_cookie_load_error(exc):
             fallback_opts = ydl_opts.copy()
