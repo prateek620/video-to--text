@@ -11,7 +11,6 @@ from app.core.config import settings
 from app.services.file_utils import ensure_dir, safe_filename
 from app.services.video_downloader import DownloadResult, download_from_url
 
-
 def save_uploads(files: Iterable[UploadFile]) -> tuple[str, list[Path]]:
     ensure_dir(settings.uploads_dir)
     job_id = uuid4().hex
@@ -24,11 +23,13 @@ def save_uploads(files: Iterable[UploadFile]) -> tuple[str, list[Path]]:
         paths.append(destination)
     return job_id, paths
 
-
 def ingest_from_link(url: str) -> tuple[str, DownloadResult]:
     ensure_dir(settings.uploads_dir)
     job_id = uuid4().hex
     download_result = download_from_url(
-        url, settings.uploads_dir, allow_video_downloads=settings.allow_video_downloads
+        url,
+        settings.uploads_dir,
+        allow_video_downloads=settings.allow_video_downloads,
+        cookies_from_browser=settings.cookies_from_browser,
     )
     return job_id, download_result
