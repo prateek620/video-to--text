@@ -35,7 +35,7 @@ class DocumentGeneratorTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp_dir:
             documents_dir = Path(tmp_dir)
             with patch("app.services.document_generator.settings.documents_dir", documents_dir):
-                bundle = generate_documents(doc, "job-long-line")
+                bundle = generate_documents(doc, "test-job-multiline")
                 self.assertIsNotNone(bundle.pdf_path)
                 self.assertTrue(bundle.pdf_path.exists())
                 self.assertGreater(bundle.pdf_path.stat().st_size, 0)
