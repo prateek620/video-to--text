@@ -113,9 +113,9 @@ def _generate_pdf(doc: KnowledgeDocument, job_id: str, markdown_content: str) ->
     pdf.set_auto_page_break(auto=True, margin=15)
     pdf.add_page()
     pdf.set_font("Helvetica", size=12)
-    pdf.multi_cell(0, 10, _safe_pdf_text(doc.title))
+    pdf.multi_cell(0, 10, _safe_pdf_text(doc.title), new_x="LMARGIN", new_y="NEXT")
     pdf.ln(2)
     for line in markdown_content.splitlines():
-        pdf.multi_cell(0, 8, _safe_pdf_text(line))
+        pdf.multi_cell(0, 8, _safe_pdf_text(line) or " ", new_x="LMARGIN", new_y="NEXT")
     pdf.output(str(pdf_path))
     return pdf_path
