@@ -29,5 +29,9 @@ def extract_audio(video_path: Path) -> Path:
         "1",
         str(output_path),
     ]
-    subprocess.run(command, check=True, capture_output=True)
+    try:
+        subprocess.run(command, check=True, capture_output=True, text=True)
+    except subprocess.CalledProcessError as exc:
+        error_output = (exc.stderr or exc.stdout or str(exc)).strip()
+        raise RuntimeError(f"ffmpeg failed to extract audio from {video_path.name}: {error_output}") from exc
     return output_path
