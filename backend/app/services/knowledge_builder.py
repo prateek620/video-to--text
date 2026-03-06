@@ -11,6 +11,7 @@ FILLER_PATTERNS = re.compile(
     r"\b(um|uh|you know|like|basically|actually|literally|so|well)\b", re.IGNORECASE
 )
 MAX_CHAPTER_TITLE_LENGTH = 60
+MAX_SENTENCE_LENGTH = 240
 
 
 def _clean_text(text: str) -> str:
@@ -34,6 +35,27 @@ def _extract_definitions(segments: Iterable[TranscriptSegment]) -> list[str]:
         if match:
             definitions.append(match.group(0).strip())
     return definitions
+
+
+def _trim_sentence(text: str, max_length: int = MAX_SENTENCE_LENGTH) -> str:
+    sentence = re.sub(r"\s+", " ", text).strip()
+    if len(sentence) <= max_length:
+        return sentence
+    return sentence[:max_length].rstrip() + "..."
+
+
+def _build_overview(cleaned_segments: list[TranscriptSegment]) -> str:
+    if not cleaned_segments:
+        return "No spoken transcript content was available to summarize."
+    opening_points = [_trim_sentence(segment.text) for segment in cleaned_segments[:2] if segment.text]
+    return " ".join(opening_points)
+
+
+def _build_summary(chapters: list[Chapter]) -> str:
+    if not chapters:
+        return "No chapter content was extracted from the transcript."
+    chapter_snippets = [_trim_sentence(chapter.content, max_length=120) for chapter in chapters[:3] if chapter.content]
+    return " ".join(chapter_snippets)
 
 
 def _group_segments(segments: list[TranscriptSegment], chunk_size: int = 2) -> list[list[TranscriptSegment]]:
@@ -64,15 +86,13 @@ def build_document(title: str, transcript: Transcript, source_url: str | None) -
                 content=content,
                 definitions=definitions,
                 insights=keywords[:3],
-                statistics=["95% accuracy"],
-                slide_text=["Pipeline overview", "Key metric"],
                 source_url=source_url,
             )
         )
 
     keywords = _extract_keywords(cleaned_segments)
-    overview = "This document captures the key technical knowledge extracted from the video, organized into chapters."
-    summary = "The video outlines the architecture, processing workflow, and best practices for building multimodal AI systems."
+    overview = _build_overview(cleaned_segments)
+    summary = _build_summary(chapters)
 
     knowledge_graph = {
         "nodes": [{"id": keyword, "type": "concept"} for keyword in keywords],
