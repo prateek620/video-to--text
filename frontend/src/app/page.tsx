@@ -258,7 +258,7 @@ export default function Home() {
               {availableFormats.length > 0 && jobId ? (
                 <div className="pt-2">
                   <p className="text-xs uppercase tracking-wide text-slate-400">
-                    Download document
+                    Download documents
                   </p>
                   <div className="mt-2 flex flex-wrap gap-2">
                     {availableFormats.map((format) => (
