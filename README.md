@@ -136,6 +136,14 @@ Then restart the backend server. If you don't have a `.env` file yet, copy the e
 cp backend/.env.example backend/.env
 ```
 
+### "Failed to decrypt with DPAPI" / cookie loading errors
+
+If link ingestion fails with a `yt-dlp` cookie decryption/load error, disable browser cookie extraction in `backend/.env`:
+```
+V2K_COOKIES_FROM_BROWSER=
+```
+Then restart the backend. The backend now retries link downloads without browser cookies when cookie loading fails.
+
 ### FFmpeg not found
 
 Make sure FFmpeg is installed and available on your `PATH`:
@@ -151,4 +159,3 @@ Make sure Tesseract is installed and on your `PATH`:
 tesseract --version
 ```
 If the command is not found, follow the install instructions in the [Prerequisites](#prerequisites) section.
-

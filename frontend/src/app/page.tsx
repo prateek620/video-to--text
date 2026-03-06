@@ -145,25 +145,30 @@ export default function Home() {
     setJobStatus("uploading");
     setAvailableFormats([]);
 
-    const response = await fetch(`${apiBase}/upload-link`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        url: link.trim(),
-        merge_videos: mergeLinks,
-        output_format: linkFormat,
-      }),
-    });
+    try {
+      const response = await fetch(`${apiBase}/upload-link`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          url: link.trim(),
+          merge_videos: mergeLinks,
+          output_format: linkFormat,
+        }),
+      });
 
-    if (!response.ok) {
-      const payload = await response.json().catch(() => ({}));
-      setError((payload as { detail?: string }).detail || "Failed to submit link.");
+      if (!response.ok) {
+        const payload = await response.json().catch(() => ({}));
+        setError((payload as { detail?: string }).detail || "Failed to submit link.");
+        setJobStatus("error");
+        return;
+      }
+
+      const payload = (await response.json()) as { job_id: string };
+      startJob(payload.job_id);
+    } catch {
+      setError("Failed to submit link. Please check your backend connection and try again.");
       setJobStatus("error");
-      return;
     }
-
-    const payload = (await response.json()) as { job_id: string };
-    startJob(payload.job_id);
   };
 
   const refreshStatus = () => {

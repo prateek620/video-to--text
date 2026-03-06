@@ -13,6 +13,7 @@ from app.schemas.responses import ProcessingStatusResponse, SearchResponse, Sear
 from app.services.pipeline import VideoInput, VideoProcessingPipeline
 from app.services.processing_store import ProcessingStore
 from app.services.video_ingestion import ingest_from_link, save_uploads
+from app.services.video_downloader import VideoDownloadDisabledError, VideoDownloadError
 
 
 router = APIRouter()
@@ -43,8 +44,10 @@ async def upload_video(
 async def upload_link(request: VideoLinkRequest, background_tasks: BackgroundTasks) -> UploadResponse:
     try:
         job_id, download_result = ingest_from_link(str(request.url))
-    except RuntimeError as exc:
+    except VideoDownloadDisabledError as exc:
         raise HTTPException(status_code=403, detail=str(exc)) from exc
+    except VideoDownloadError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
 
     store.create(job_id, status="queued")
     background_tasks.add_task(
