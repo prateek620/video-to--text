@@ -9,7 +9,7 @@ class Settings(BaseSettings):
     app_name: str = "Video2Knowledge AI"
     environment: str = "development"
     base_url: str = "http://localhost:8000"
-    allow_network: bool = False
+    allow_video_downloads: bool = False
     storage_dir: Path = Path(__file__).resolve().parents[2] / "storage"
     uploads_dir: Path = storage_dir / "uploads"
     documents_dir: Path = storage_dir / "documents"

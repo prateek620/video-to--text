@@ -44,6 +44,7 @@ class VideoKnowledge:
     ocr_text: list[FrameText]
     visuals: list[FrameDescription]
     scenes: list[SceneChange]
+    fusion_summary: str
 
 
 @dataclass

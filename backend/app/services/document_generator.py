@@ -92,6 +92,11 @@ def generate_documents(doc: KnowledgeDocument, job_id: str) -> DocumentBundle:
     return DocumentBundle(markdown_path=markdown_path, pdf_path=pdf_path, docx_path=docx_path)
 
 
+def _safe_pdf_text(text: str) -> str:
+    """Sanitize text for PDF output; unsupported latin-1 characters are replaced."""
+    return text.encode("latin-1", "replace").decode("latin-1")
+
+
 def _generate_docx(doc: KnowledgeDocument, job_id: str, markdown_content: str) -> Path | None:
     docx_path = settings.documents_dir / f"{job_id}.docx"
     document = Document()
@@ -108,9 +113,9 @@ def _generate_pdf(doc: KnowledgeDocument, job_id: str, markdown_content: str) ->
     pdf.set_auto_page_break(auto=True, margin=15)
     pdf.add_page()
     pdf.set_font("Helvetica", size=12)
-    pdf.multi_cell(0, 10, doc.title)
+    pdf.multi_cell(0, 10, _safe_pdf_text(doc.title))
     pdf.ln(2)
     for line in markdown_content.splitlines():
-        pdf.multi_cell(0, 8, line)
+        pdf.multi_cell(0, 8, _safe_pdf_text(line))
     pdf.output(str(pdf_path))
     return pdf_path

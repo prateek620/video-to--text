@@ -46,7 +46,7 @@ pip install -r requirements.txt
 uvicorn app.main:app --reload
 ```
 
-Environment variables are read from `.env` with prefix `V2K_`. Set `V2K_ALLOW_NETWORK=true` to enable `yt-dlp` downloads.
+Environment variables are read from `.env` with prefix `V2K_`. Set `V2K_ALLOW_VIDEO_DOWNLOADS=true` to enable `yt-dlp` downloads.
 
 ## Frontend Setup
 

@@ -3,6 +3,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from enum import Enum
 from pathlib import Path
+from urllib.parse import urlparse
 
 from yt_dlp import YoutubeDL
 
@@ -33,18 +34,19 @@ class DownloadResult:
 
 
 def detect_source(url: str) -> VideoSource:
-    lowered = url.lower()
-    if "youtube.com" in lowered or "youtu.be" in lowered:
+    parsed = urlparse(url)
+    hostname = (parsed.hostname or "").lower()
+    if hostname in {"youtube.com", "www.youtube.com", "m.youtube.com", "youtu.be"}:
         return VideoSource.YOUTUBE
-    if "vimeo.com" in lowered:
+    if hostname in {"vimeo.com", "www.vimeo.com", "player.vimeo.com"}:
         return VideoSource.VIMEO
-    if "dailymotion.com" in lowered:
+    if hostname in {"dailymotion.com", "www.dailymotion.com"}:
         return VideoSource.DAILYMOTION
-    if "drive.google.com" in lowered:
+    if hostname == "drive.google.com":
         return VideoSource.GOOGLE_DRIVE
-    if "dropbox.com" in lowered:
+    if hostname in {"dropbox.com", "www.dropbox.com"}:
         return VideoSource.DROPBOX
-    if lowered.startswith("http"):
+    if parsed.scheme in {"http", "https"}:
         return VideoSource.DIRECT
     return VideoSource.UNKNOWN
 
@@ -54,13 +56,15 @@ def is_playlist(url: str) -> bool:
     return "list=" in lowered or "playlist" in lowered
 
 
-def download_from_url(url: str, output_dir: Path, *, allow_network: bool) -> DownloadResult:
-    if not allow_network:
-        raise RuntimeError("Network access disabled. Set V2K_ALLOW_NETWORK=true to enable downloads.")
+def download_from_url(url: str, output_dir: Path, *, allow_video_downloads: bool) -> DownloadResult:
+    if not allow_video_downloads:
+        raise RuntimeError(
+            "Video downloads are disabled. Set V2K_ALLOW_VIDEO_DOWNLOADS to a truthy value to enable downloads."
+        )
 
     source = detect_source(url)
     playlist = is_playlist(url)
-    output_template = str(output_dir / "%(title).200B-%(id)s.%(ext)s")
+    output_template = str(output_dir / "%(title).200s-%(id)s.%(ext)s")
     ydl_opts = {
         "outtmpl": output_template,
         "noplaylist": not playlist,

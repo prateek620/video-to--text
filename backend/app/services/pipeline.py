@@ -28,7 +28,7 @@ class VideoProcessingPipeline:
         scenes = frame_analysis.detect_scenes(frames)
         ocr_text = extract_text_from_frames(frames)
         visuals = describe_frames(frames)
-        _ = multimodal_fusion.fuse_modalities(transcript, ocr_text, visuals)
+        fusion_summary = multimodal_fusion.fuse_modalities(transcript, ocr_text, visuals)
         return VideoKnowledge(
             source_id=video_input.source_id,
             source_url=video_input.source_url,
@@ -36,6 +36,7 @@ class VideoProcessingPipeline:
             ocr_text=ocr_text,
             visuals=visuals,
             scenes=scenes,
+            fusion_summary=fusion_summary,
         )
 
     def build_knowledge(self, job_id: str, title: str, knowledge_items: Iterable[VideoKnowledge]) -> ProcessingResult:

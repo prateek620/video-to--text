@@ -7,7 +7,10 @@ from typing import Iterable
 from app.services.models import Chapter, KnowledgeDocument, Transcript, TranscriptSegment
 
 
-FILLER_PATTERNS = re.compile(r"\b(um|uh|you know|like)\b", re.IGNORECASE)
+FILLER_PATTERNS = re.compile(
+    r"\b(um|uh|you know|like|basically|actually|literally|so|well)\b", re.IGNORECASE
+)
+MAX_CHAPTER_TITLE_LENGTH = 60
 
 
 def _clean_text(text: str) -> str:
@@ -48,7 +51,10 @@ def build_document(title: str, transcript: Transcript, source_url: str | None) -
 
     for index, chunk in enumerate(grouped, start=1):
         content = " ".join(segment.text for segment in chunk)
-        chapter_title = f"Chapter {index}: {chunk[0].text.split('.')[0][:60]}" if chunk else f"Chapter {index}"
+        base_title = chunk[0].text.split(".")[0].strip() if chunk else ""
+        if len(base_title) > MAX_CHAPTER_TITLE_LENGTH:
+            base_title = base_title[:MAX_CHAPTER_TITLE_LENGTH].rstrip()
+        chapter_title = f"Chapter {index}: {base_title}" if base_title else f"Chapter {index}"
         definitions = _extract_definitions(chunk)
         keywords = _extract_keywords(chunk)
         chapters.append(

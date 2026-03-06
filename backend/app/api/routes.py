@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import logging
 from pathlib import Path
 from typing import Iterable
 
@@ -17,6 +18,7 @@ from app.services.video_ingestion import ingest_from_link, save_uploads
 router = APIRouter()
 store = ProcessingStore()
 pipe = VideoProcessingPipeline()
+logger = logging.getLogger(__name__)
 
 
 @router.get("/")
@@ -71,7 +73,7 @@ def processing_status(job_id: str = Query(...)) -> ProcessingStatusResponse:
 
 
 @router.get("/download-document")
-def download_document(job_id: str = Query(...), format: str = Query("markdown")) -> FileResponse:
+def download_document(job_id: str = Query(...), output_format: str = Query("markdown")) -> FileResponse:
     record = store.get(job_id)
     if not record or not record.result:
         raise HTTPException(status_code=404, detail="Document not ready")
@@ -82,7 +84,7 @@ def download_document(job_id: str = Query(...), format: str = Query("markdown"))
         "pdf": bundle.pdf_path,
         "docx": bundle.docx_path,
     }
-    file_path = format_lookup.get(format)
+    file_path = format_lookup.get(output_format)
     if not file_path or not Path(file_path).exists():
         raise HTTPException(status_code=404, detail="Requested format not available")
 
@@ -109,12 +111,12 @@ def _process_job(
     paths: Iterable[Path],
     merge_videos: bool,
     output_format: str,
-    metadata: Iterable | None = None,
+    video_metadata: Iterable | None = None,
 ) -> None:
     try:
         store.update(job_id, status="processing", progress=0.05, detail="Starting pipeline")
         video_inputs = []
-        metadata_items = list(metadata) if metadata else []
+        metadata_items = list(video_metadata) if video_metadata else []
         for index, path in enumerate(paths):
             source_url = metadata_items[index].source_url if index < len(metadata_items) else None
             video_inputs.append(VideoInput(source_id=f"video-{index + 1}", path=Path(path), source_url=source_url))
@@ -138,5 +140,9 @@ def _process_job(
 
         store.set_result(job_id, result, output_formats=["markdown", "pdf", "docx"])
         store.update(job_id, status="completed", progress=1.0, detail="Complete")
-    except Exception as exc:  # pragma: no cover - defensive guard for background tasks
-        store.update(job_id, status="failed", progress=1.0, detail=str(exc))
+    except (RuntimeError, ValueError, OSError) as exc:  # pragma: no cover - defensive guard for background tasks
+        logger.exception("Video processing failed for job %s", job_id)
+        error_type = type(exc).__name__
+        store.update(
+            job_id, status="failed", progress=1.0, detail=f"processing_error({error_type}): {exc}"
+        )

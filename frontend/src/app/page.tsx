@@ -11,7 +11,7 @@ const formatOptions = [
 ];
 
 export default function Home() {
-  const [files, setFiles] = useState<FileList | null>(null);
+  const [selectedVideoFiles, setSelectedVideoFiles] = useState<FileList | null>(null);
   const [link, setLink] = useState("");
   const [mergeUploads, setMergeUploads] = useState(false);
   const [mergeLinks, setMergeLinks] = useState(false);
@@ -29,7 +29,7 @@ export default function Home() {
   );
 
   const handleUpload = async () => {
-    if (!files || files.length === 0) {
+    if (!selectedVideoFiles || selectedVideoFiles.length === 0) {
       setError("Please select at least one video file to upload.");
       return;
     }
@@ -39,7 +39,7 @@ export default function Home() {
     setStatus("Uploading...");
 
     const formData = new FormData();
-    Array.from(files).forEach((file) => formData.append("files", file));
+    Array.from(selectedVideoFiles).forEach((file) => formData.append("files", file));
 
     const request = new XMLHttpRequest();
     request.open(
@@ -123,7 +123,7 @@ export default function Home() {
     };
     setStatus(`Status: ${payload.status}`);
     setProcessingDetail(payload.detail || null);
-    setUploadProgress(Math.round(payload.progress * 100));
+    setUploadProgress(Math.min(100, Math.round(payload.progress * 100)));
   };
 
   return (
@@ -153,7 +153,7 @@ export default function Home() {
               <input
                 type="file"
                 multiple
-                onChange={(event) => setFiles(event.target.files)}
+                onChange={(event) => setSelectedVideoFiles(event.target.files)}
                 className="w-full rounded-lg border border-slate-700 bg-slate-950 px-4 py-2 text-sm"
               />
               <div className="flex flex-wrap items-center gap-3 text-sm text-slate-300">

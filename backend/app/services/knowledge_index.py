@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import math
 import re
 from dataclasses import dataclass
 
@@ -18,6 +17,8 @@ class SearchHit:
 
 
 class KnowledgeIndex:
+    """Lightweight hash-based embedding index (placeholder for production embeddings)."""
+
     def __init__(self, dimension: int = 128) -> None:
         self._dimension = dimension
         self._vectors: list[np.ndarray] = []
@@ -42,10 +43,13 @@ class KnowledgeIndex:
 
     def _embed(self, text: str) -> np.ndarray:
         vector = np.zeros(self._dimension, dtype=np.float32)
-        for token in re.findall(r"[A-Za-z]{3,}", text.lower()):
+        tokens = re.findall(r"[A-Za-z]{3,}", text.lower())
+        if not tokens:
+            return vector
+        for token in tokens:
             bucket = hash(token) % self._dimension
             vector[bucket] += 1.0
-        norm = math.sqrt(float(np.dot(vector, vector)))
+        norm = float(np.linalg.norm(vector))
         return vector / norm if norm else vector
 
     @staticmethod

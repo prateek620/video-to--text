@@ -28,5 +28,7 @@ def save_uploads(files: Iterable[UploadFile]) -> tuple[str, list[Path]]:
 def ingest_from_link(url: str) -> tuple[str, DownloadResult]:
     ensure_dir(settings.uploads_dir)
     job_id = uuid4().hex
-    download_result = download_from_url(url, settings.uploads_dir, allow_network=settings.allow_network)
+    download_result = download_from_url(
+        url, settings.uploads_dir, allow_video_downloads=settings.allow_video_downloads
+    )
     return job_id, download_result
