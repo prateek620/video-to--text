@@ -165,8 +165,13 @@ export default function Home() {
 
       const payload = (await response.json()) as { job_id: string };
       startJob(payload.job_id);
-    } catch {
-      setError("Failed to submit link. Please check your backend connection and try again.");
+    } catch (error) {
+      const detail = error instanceof Error ? error.message : undefined;
+      setError(
+        detail
+          ? `Failed to submit link. ${detail}`
+          : "Failed to submit link. Please check your backend connection and try again."
+      );
       setJobStatus("error");
     }
   };

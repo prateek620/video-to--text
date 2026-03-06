@@ -113,7 +113,7 @@ def download_from_url(
     source = detect_source(url)
     playlist = is_playlist(url)
     output_template = str(output_dir / "%(title).200s-%(id)s.%(ext)s")
-    ydl_opts: dict = {
+    ydl_opts: dict[str, Any] = {
         "outtmpl": output_template,
         "noplaylist": not playlist,
         "quiet": True,
@@ -129,7 +129,7 @@ def download_from_url(
         paths, metadata = _download_items(url, ydl_opts)
     except DownloadError as exc:
         if cookies_from_browser and _is_cookie_load_error(exc):
-            fallback_opts = dict(ydl_opts)
+            fallback_opts = ydl_opts.copy()
             fallback_opts.pop("cookiesfrombrowser", None)
             try:
                 paths, metadata = _download_items(url, fallback_opts)
