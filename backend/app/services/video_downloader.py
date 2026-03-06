@@ -71,6 +71,10 @@ def _is_cookie_load_error(exc: DownloadError) -> bool:
     return "failed to load cookies" in message or "failed to decrypt with dpapi" in message
 
 
+def _is_format_unavailable_error(exc: DownloadError) -> bool:
+    return "requested format is not available" in str(exc).lower()
+
+
 def _download_items(url: str, ydl_opts: dict[str, Any]) -> tuple[list[Path], list[VideoMetadata]]:
     with YoutubeDL(ydl_opts) as ydl:
         info = ydl.extract_info(url, download=True)
@@ -128,6 +132,18 @@ def download_from_url(
     try:
         paths, metadata = _download_items(url, ydl_opts)
     except DownloadError as exc:
+        if _is_format_unavailable_error(exc):
+            fallback_opts = ydl_opts.copy()
+            fallback_opts["format"] = "best[ext=mp4]/best"
+            fallback_opts.pop("merge_output_format", None)
+            try:
+                paths, metadata = _download_items(url, fallback_opts)
+            except DownloadError as fallback_exc:
+                raise VideoDownloadError(
+                    "Failed to download the provided URL. No compatible video format was available."
+                ) from fallback_exc
+            return DownloadResult(paths=paths, metadata=metadata, source=source, is_playlist=playlist)
+
         if cookies_from_browser and _is_cookie_load_error(exc):
             fallback_opts = ydl_opts.copy()
             fallback_opts.pop("cookiesfrombrowser", None)
