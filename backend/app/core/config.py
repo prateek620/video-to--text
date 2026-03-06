@@ -10,6 +10,7 @@ class Settings(BaseSettings):
     environment: str = "development"
     base_url: str = "http://localhost:8000"
     allow_video_downloads: bool = False
+    cookies_from_browser: str = ""
     storage_dir: Path = Path(__file__).resolve().parents[2] / "storage"
     uploads_dir: Path = storage_dir / "uploads"
     documents_dir: Path = storage_dir / "documents"
