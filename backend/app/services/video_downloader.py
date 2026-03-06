@@ -56,7 +56,13 @@ def is_playlist(url: str) -> bool:
     return "list=" in lowered or "playlist" in lowered
 
 
-def download_from_url(url: str, output_dir: Path, *, allow_video_downloads: bool) -> DownloadResult:
+def download_from_url(
+    url: str,
+    output_dir: Path,
+    *,
+    allow_video_downloads: bool,
+    cookies_from_browser: str = "",
+) -> DownloadResult:
     if not allow_video_downloads:
         raise RuntimeError(
             "Video downloads are disabled. Set V2K_ALLOW_VIDEO_DOWNLOADS to a truthy value to enable downloads."
@@ -65,12 +71,16 @@ def download_from_url(url: str, output_dir: Path, *, allow_video_downloads: bool
     source = detect_source(url)
     playlist = is_playlist(url)
     output_template = str(output_dir / "%(title).200s-%(id)s.%(ext)s")
-    ydl_opts = {
+    ydl_opts: dict = {
         "outtmpl": output_template,
         "noplaylist": not playlist,
         "quiet": True,
         "no_warnings": True,
     }
+
+    # Pass browser cookies to bypass YouTube bot detection
+    if cookies_from_browser:
+        ydl_opts["cookiesfrombrowser"] = (cookies_from_browser,)
 
     with YoutubeDL(ydl_opts) as ydl:
         info = ydl.extract_info(url, download=True)
