@@ -22,6 +22,7 @@ export default function Home() {
   const [status, setStatus] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [processingDetail, setProcessingDetail] = useState<string | null>(null);
+  const [availableFormats, setAvailableFormats] = useState<string[]>([]);
 
   const apiBase = useMemo(
     () => process.env.NEXT_PUBLIC_API_BASE_URL || "http://localhost:8000",
@@ -37,6 +38,7 @@ export default function Home() {
     setError(null);
     setUploadProgress(0);
     setStatus("Uploading...");
+    setAvailableFormats([]);
 
     const formData = new FormData();
     Array.from(selectedVideoFiles).forEach((file) => formData.append("files", file));
@@ -80,6 +82,7 @@ export default function Home() {
 
     setError(null);
     setStatus("Submitting link...");
+    setAvailableFormats([]);
 
     const response = await fetch(`${apiBase}/upload-link`, {
       method: "POST",
@@ -120,9 +123,11 @@ export default function Home() {
       status: string;
       progress: number;
       detail?: string;
+      output_formats?: string[];
     };
     setStatus(`Status: ${payload.status}`);
     setProcessingDetail(payload.detail || null);
+    setAvailableFormats(payload.output_formats || []);
     setUploadProgress(Math.min(100, Math.round(payload.progress * 100)));
   };
 
@@ -249,6 +254,24 @@ export default function Home() {
               <p className="text-sm text-slate-300">{status || "Idle"}</p>
               {processingDetail ? (
                 <p className="text-xs text-slate-500">{processingDetail}</p>
+              ) : null}
+              {availableFormats.length > 0 && jobId ? (
+                <div className="pt-2">
+                  <p className="text-xs uppercase tracking-wide text-slate-400">
+                    Download document
+                  </p>
+                  <div className="mt-2 flex flex-wrap gap-2">
+                    {availableFormats.map((format) => (
+                      <a
+                        key={format}
+                        href={`${apiBase}/download-document?job_id=${jobId}&output_format=${format}`}
+                        className="rounded-md border border-slate-700 px-3 py-1 text-xs font-medium uppercase text-slate-200 hover:border-slate-500"
+                      >
+                        {format}
+                      </a>
+                    ))}
+                  </div>
+                </div>
               ) : null}
             </div>
             <button
