@@ -12,6 +12,7 @@ FILLER_PATTERNS = re.compile(
 )
 MAX_CHAPTER_TITLE_LENGTH = 60
 MAX_SENTENCE_LENGTH = 240
+MAX_SUMMARY_SNIPPET_LENGTH = 120
 
 
 def _clean_text(text: str) -> str:
@@ -41,20 +42,31 @@ def _trim_sentence(text: str, max_length: int = MAX_SENTENCE_LENGTH) -> str:
     sentence = re.sub(r"\s+", " ", text).strip()
     if len(sentence) <= max_length:
         return sentence
-    return sentence[:max_length].rstrip() + "..."
+    if max_length <= 3:
+        return "." * max_length
+    trim_length = max_length - 3
+    return sentence[:trim_length].rstrip() + "..."
 
 
 def _build_overview(cleaned_segments: list[TranscriptSegment]) -> str:
     if not cleaned_segments:
         return "No spoken transcript content was available to summarize."
     opening_points = [_trim_sentence(segment.text) for segment in cleaned_segments[:2] if segment.text]
+    if not opening_points:
+        return "No spoken transcript content was available to summarize."
     return " ".join(opening_points)
 
 
 def _build_summary(chapters: list[Chapter]) -> str:
     if not chapters:
         return "No chapter content was extracted from the transcript."
-    chapter_snippets = [_trim_sentence(chapter.content, max_length=120) for chapter in chapters[:3] if chapter.content]
+    chapter_snippets = [
+        _trim_sentence(chapter.content, max_length=MAX_SUMMARY_SNIPPET_LENGTH)
+        for chapter in chapters[:3]
+        if chapter.content
+    ]
+    if not chapter_snippets:
+        return "No chapter content was extracted from the transcript."
     return " ".join(chapter_snippets)
 
 
