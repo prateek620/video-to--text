@@ -7,7 +7,7 @@ from typing import Iterable
 from app.services import audio_processing, frame_analysis, knowledge_builder, multimodal_fusion
 from app.services.document_generator import generate_documents
 from app.services.knowledge_index import KnowledgeIndex
-from app.services.models import ProcessingResult, Transcript, VideoKnowledge
+from app.services.models import ProcessingResult, Transcript, TranscriptSegment, VideoKnowledge
 from app.services.ocr_processing import extract_text_from_frames
 from app.services.speech_to_text import transcribe_audio
 from app.services.visual_understanding import describe_frames
@@ -47,8 +47,34 @@ class VideoProcessingPipeline:
             raise RuntimeError("No knowledge artifacts available to build document.")
         for item in knowledge_items:
             combined_transcript_segments.extend(item.transcript.segments)
+            combined_transcript_segments.extend(
+                [
+                    TranscriptSegment(
+                        start=frame_text.timestamp,
+                        end=frame_text.timestamp,
+                        text=f"Visible on screen at {frame_text.timestamp:.0f} seconds: {frame_text.text}",
+                    )
+                    for frame_text in item.ocr_text
+                    if frame_text.text.strip()
+                ]
+            )
+            combined_transcript_segments.extend(
+                [
+                    TranscriptSegment(
+                        start=frame_description.timestamp,
+                        end=frame_description.timestamp,
+                        text=(
+                            f"Visual context at {frame_description.timestamp:.0f} seconds: "
+                            f"{frame_description.description}"
+                        ),
+                    )
+                    for frame_description in item.visuals
+                    if frame_description.description.strip()
+                ]
+            )
             source_url = source_url or item.source_url
 
+        combined_transcript_segments.sort(key=lambda segment: segment.start)
         combined_transcript = Transcript(segments=combined_transcript_segments, language="en")
 
         doc = knowledge_builder.build_document(title, combined_transcript, source_url)
