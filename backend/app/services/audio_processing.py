@@ -11,11 +11,12 @@ from app.services.file_utils import ensure_dir
 def extract_audio(video_path: Path) -> Path:
     ensure_dir(settings.audio_dir)
     output_path = settings.audio_dir / f"{video_path.stem}.wav"
+
     ffmpeg = shutil.which("ffmpeg")
     if not ffmpeg:
         raise RuntimeError("ffmpeg is required for audio extraction.")
 
-    command = [
+    cmd = [
         ffmpeg,
         "-y",
         "-i",
@@ -29,9 +30,11 @@ def extract_audio(video_path: Path) -> Path:
         "1",
         str(output_path),
     ]
+
     try:
-        subprocess.run(command, check=True, capture_output=True, text=True)
+        subprocess.run(cmd, check=True, capture_output=True, text=True)
     except subprocess.CalledProcessError as exc:
-        error_output = (exc.stderr or exc.stdout or str(exc)).strip()
-        raise RuntimeError(f"ffmpeg failed to extract audio from {video_path.name}: {error_output}") from exc
+        err = (exc.stderr or exc.stdout or str(exc)).strip()
+        raise RuntimeError(f"ffmpeg failed to extract audio from {video_path.name}: {err}") from exc
+
     return output_path

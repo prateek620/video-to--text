@@ -6,131 +6,74 @@ from typing import Iterable
 
 from app.services.models import Chapter, KnowledgeDocument, Transcript, TranscriptSegment
 
-
-FILLER_PATTERNS = re.compile(
-    r"\b(um|uh|you know|like|basically|actually|literally|so|well)\b", re.IGNORECASE
-)
-MAX_CHAPTER_TITLE_LENGTH = 60
-MAX_SENTENCE_LENGTH = 240
-MAX_SUMMARY_SNIPPET_LENGTH = 120
+FILLER = re.compile(r"\b(um|uh|you know|like|basically|actually|literally|so|well)\b", re.IGNORECASE)
 
 
-def _clean_text(text: str) -> str:
-    cleaned = FILLER_PATTERNS.sub("", text)
-    cleaned = re.sub(r"\s+", " ", cleaned).strip()
-    return cleaned
+def _clean(text: str) -> str:
+    text = FILLER.sub("", text)
+    return re.sub(r"\s+", " ", text).strip()
 
 
-def _extract_keywords(segments: Iterable[TranscriptSegment]) -> list[str]:
+def _is_noise(text: str) -> bool:
+    if not text:
+        return True
+    bad = sum(1 for c in text if not (c.isalnum() or c.isspace() or c in ".,:;!?'-_/()%"))
+    return (bad / max(len(text), 1)) > 0.35
+
+
+def _trim(text: str, n: int) -> str:
+    t = re.sub(r"\s+", " ", text).strip()
+    return t if len(t) <= n else t[: n - 3].rstrip() + "..."
+
+
+def _keywords(segs: Iterable[TranscriptSegment], limit: int = 10) -> list[str]:
     words: list[str] = []
-    for segment in segments:
-        words.extend(re.findall(r"[A-Za-z]{4,}", segment.text))
-    counts = Counter(word.lower() for word in words)
-    return [word for word, _ in counts.most_common(8)]
+    for s in segs:
+        words.extend(re.findall(r"[A-Za-z][A-Za-z0-9\-\+]{2,}", s.text))
+    cnt = Counter(w.lower() for w in words)
+    return [w for w, _ in cnt.most_common(limit)]
 
 
-def _extract_definitions(segments: Iterable[TranscriptSegment]) -> list[str]:
-    definitions = []
-    for segment in segments:
-        match = re.search(r"([A-Z][A-Za-z0-9\s]+) is ([^.]+)", segment.text)
-        if match:
-            definitions.append(match.group(0).strip())
-    return definitions
-
-
-def _trim_sentence(text: str, max_length: int = MAX_SENTENCE_LENGTH) -> str:
-    sentence = re.sub(r"\s+", " ", text).strip()
-    if len(sentence) <= max_length:
-        return sentence
-    if max_length <= 3:
-        return "." * max_length
-    trim_length = max_length - 3
-    return sentence[:trim_length].rstrip() + "..."
-
-
-def _build_overview(cleaned_segments: list[TranscriptSegment]) -> str:
-    if not cleaned_segments:
-        return "No spoken transcript content was available to summarize."
-    opening_points = [_trim_sentence(segment.text) for segment in cleaned_segments[:2] if segment.text]
-    if not opening_points:
-        return "No spoken transcript content was available to summarize."
-    return " ".join(opening_points)
-
-
-def _build_summary(chapters: list[Chapter]) -> str:
-    if not chapters:
-        return "No chapter content was extracted from the transcript."
-    chapter_snippets = [
-        _trim_sentence(chapter.content, max_length=MAX_SUMMARY_SNIPPET_LENGTH)
-        for chapter in chapters[:3]
-        if chapter.content
-    ]
-    if not chapter_snippets:
-        return "No chapter content was extracted from the transcript."
-    return " ".join(chapter_snippets)
-
-
-def _group_segments(segments: list[TranscriptSegment], chunk_size: int = 2) -> list[list[TranscriptSegment]]:
-    return [segments[i : i + chunk_size] for i in range(0, len(segments), chunk_size)]
+def _group(segs: list[TranscriptSegment], size: int = 8) -> list[list[TranscriptSegment]]:
+    return [segs[i : i + size] for i in range(0, len(segs), size)]
 
 
 def build_document(title: str, transcript: Transcript, source_url: str | None) -> KnowledgeDocument:
-    cleaned_segments = [
-        TranscriptSegment(start=s.start, end=s.end, text=_clean_text(s.text))
+    cleaned = [
+        TranscriptSegment(start=s.start, end=s.end, text=_clean(s.text))
         for s in transcript.segments
-        if _clean_text(s.text)
+        if _clean(s.text) and not _is_noise(_clean(s.text))
     ]
-    grouped = _group_segments(cleaned_segments)
-    chapters: list[Chapter] = []
 
-    for index, chunk in enumerate(grouped, start=1):
-        content = " ".join(segment.text for segment in chunk)
-        base_title = chunk[0].text.split(".")[0].strip() if chunk else ""
-        if len(base_title) > MAX_CHAPTER_TITLE_LENGTH:
-            base_title = base_title[:MAX_CHAPTER_TITLE_LENGTH].rstrip()
-        chapter_title = f"Chapter {index}: {base_title}" if base_title else f"Chapter {index}"
-        definitions = _extract_definitions(chunk)
-        keywords = _extract_keywords(chunk)
+    chapters: list[Chapter] = []
+    for i, chunk in enumerate(_group(cleaned, 8), start=1):
+        content = " ".join(s.text for s in chunk).strip()
+        if not content:
+            continue
+        head = _trim(re.split(r"[.!?]", chunk[0].text)[0].strip() or f"Chapter {i}", 80)
         chapters.append(
             Chapter(
-                title=chapter_title,
-                timestamp=chunk[0].start if chunk else 0.0,
+                title=f"Chapter {i}: {head}",
+                timestamp=chunk[0].start,
                 content=content,
-                definitions=definitions,
-                insights=keywords[:3],
+                examples=[s.text for s in chunk if "example" in s.text.lower()][:4],
+                statistics=[s.text for s in chunk if re.search(r"\b\d+(\.\d+)?%|\b\d+\b", s.text)][:4],
+                insights=_keywords(chunk, 8),
                 source_url=source_url,
             )
         )
 
-    keywords = _extract_keywords(cleaned_segments)
-    overview = _build_overview(cleaned_segments)
-    summary = _build_summary(chapters)
-
-    knowledge_graph = {
-        "nodes": [{"id": keyword, "type": "concept"} for keyword in keywords],
-        "edges": [
-            {"source": keywords[i], "target": keywords[i + 1], "relation": "related_to"}
-            for i in range(len(keywords) - 1)
-        ],
-    }
-
-    timeline_index = [
-        {"title": chapter.title, "timestamp": chapter.timestamp, "source_url": chapter.source_url}
-        for chapter in chapters
-    ]
-
-    flashcards = [(keyword.title(), f"Explanation of {keyword}.") for keyword in keywords[:5]]
-    questions = [f"What is {keyword}?" for keyword in keywords[:5]]
+    takeaways = _keywords(cleaned, 10) or ["No key takeaways extracted"]
 
     return KnowledgeDocument(
         title=title,
-        overview=overview,
+        overview=_trim(" ".join(s.text for s in cleaned[:6]), 900) if cleaned else "No spoken content was available.",
         chapters=chapters,
-        key_takeaways=keywords[:5],
-        summary=summary,
-        knowledge_graph=knowledge_graph,
-        flashcards=flashcards,
-        questions=questions,
-        timeline_index=timeline_index,
+        key_takeaways=takeaways,
+        summary=_trim(" ".join(c.content for c in chapters[:4]), 1000) if chapters else "No chapter content was extracted.",
+        knowledge_graph={"nodes": [{"id": k} for k in takeaways], "edges": []},
+        flashcards=[(k.title(), "Explained in context with examples.") for k in takeaways[:6]],
+        questions=[f"What does '{k}' mean in this video?" for k in takeaways[:6]],
+        timeline_index=[{"timestamp": c.timestamp, "title": c.title, "source_url": c.source_url} for c in chapters],
         source_urls=[source_url] if source_url else [],
     )

@@ -21,15 +21,22 @@ class ProcessingStore:
 
     def create(self, job_id: str, status: str = "queued") -> None:
         with self._lock:
-            self._store[job_id] = ProcessingRecord(status=status, progress=0.0)
+            self._store[job_id] = ProcessingRecord(status=status, progress=0.0, detail="Queued")
 
-    def update(self, job_id: str, *, status: str | None = None, progress: float | None = None, detail: str | None = None) -> None:
+    def update(
+        self,
+        job_id: str,
+        *,
+        status: str | None = None,
+        progress: float | None = None,
+        detail: str | None = None,
+    ) -> None:
         with self._lock:
             record = self._store[job_id]
             if status is not None:
                 record.status = status
             if progress is not None:
-                record.progress = progress
+                record.progress = max(0.0, min(1.0, float(progress)))
             if detail is not None:
                 record.detail = detail
 
