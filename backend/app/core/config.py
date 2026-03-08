@@ -1,23 +1,38 @@
 from __future__ import annotations
 
 from pathlib import Path
-
-from pydantic_settings import BaseSettings, SettingsConfigDict
-
+from pydantic_settings import BaseSettings
+from pydantic import ConfigDict, field_validator
 
 class Settings(BaseSettings):
+    # API Settings
     app_name: str = "Video2Knowledge AI"
-    environment: str = "development"
-    base_url: str = "http://localhost:8000"
-    allow_video_downloads: bool = False
+    api_title: str = "Video2Knowledge AI"
+    api_version: str = "1.0.0"
+    
+    # Directory Settings (as Path objects)
+    storage_dir: Path = Path(__file__).parent.parent.parent / "storage"
+    uploads_dir: Path = Path(__file__).parent.parent.parent / "storage" / "uploads"
+    documents_dir: Path = Path(__file__).parent.parent.parent / "storage" / "documents"
+    frames_dir: Path = Path(__file__).parent.parent.parent / "storage" / "frames"
+    audio_dir: Path = Path(__file__).parent.parent.parent / "storage" / "audio"
+    
+    # Feature Flags
+    allow_video_downloads: bool = True
     cookies_from_browser: str = ""
-    storage_dir: Path = Path(__file__).resolve().parents[2] / "storage"
-    uploads_dir: Path = storage_dir / "uploads"
-    documents_dir: Path = storage_dir / "documents"
-    frames_dir: Path = storage_dir / "frames"
-    audio_dir: Path = storage_dir / "audio"
-    max_upload_mb: int = 1024
-    model_config = SettingsConfigDict(env_file=".env", env_prefix="V2K_", extra="ignore")
-
+    
+    # Pydantic v2 config
+    model_config = ConfigDict(
+        env_file=".env",
+        extra="ignore",
+        arbitrary_types_allowed=True
+    )
+    
+    @field_validator("storage_dir", "uploads_dir", "documents_dir", "frames_dir", "audio_dir", mode="before")
+    @classmethod
+    def validate_paths(cls, v):
+        if isinstance(v, str):
+            return Path(v)
+        return v
 
 settings = Settings()

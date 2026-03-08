@@ -111,6 +111,8 @@ def download_from_url(
         "no_warnings": False,
         "format": "bestvideo[ext=mp4]+bestaudio[ext=m4a]/best",
         "merge_output_format": "mp4",
+        "socket_timeout": 30,  # Add timeout control
+        "retries": 5,  # Add more retries
     }
 
     # Windows-safe: do not use browser cookies unless explicitly needed and non-Windows

@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useState } from "react";
 
 const DEFAULT_FORMAT = "markdown";
 
@@ -11,282 +11,260 @@ const formatOptions = [
 ];
 
 type InputTab = "upload" | "link";
-type JobStatus = "idle" | "uploading" | "processing" | "done" | "error";
+type JobStatus = "idle" | "queued" | "uploading" | "processing" | "done" | "error" | "failed";
 
 export default function Home() {
   const [activeTab, setActiveTab] = useState<InputTab>("upload");
- const [selectedVideoFiles, setSelectedVideoFiles] = useState<File[]>([]);
-  const [link, setLink] = useState("");
-  const [mergeUploads, setMergeUploads] = useState(false);
-  const [mergeLinks, setMergeLinks] = useState(false);
-  const [uploadFormat, setUploadFormat] = useState(DEFAULT_FORMAT);
-  const [linkFormat, setLinkFormat] = useState(DEFAULT_FORMAT);
-  const [uploadProgress, setUploadProgress] = useState(0);
-  const [jobId, setJobId] = useState<string | null>(null);
+  const [jobId, setJobId] = useState<string>("");
   const [jobStatus, setJobStatus] = useState<JobStatus>("idle");
-  const [statusLabel, setStatusLabel] = useState<string | null>(null);
-  const [error, setError] = useState<string | null>(null);
-  const [processingDetail, setProcessingDetail] = useState<string | null>(null);
-  const [availableFormats, setAvailableFormats] = useState<string[]>([]);
-  const pollTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const [progress, setProgress] = useState(0);
+  const [detail, setDetail] = useState("");
+  const [outputFormats, setOutputFormats] = useState<string[]>([]);
+  const [link, setLink] = useState("");
+  const [selectedFiles, setSelectedFiles] = useState<File[]>([]);
 
-  const apiBase = useMemo(() => process.env.NEXT_PUBLIC_API_BASE_URL || "http://localhost:8000", []);
-  const isActive = jobStatus === "uploading" || jobStatus === "processing";
-
-  const stopPolling = () => {
-    if (pollTimerRef.current) {
-      clearTimeout(pollTimerRef.current);
-      pollTimerRef.current = null;
-    }
-  };
-
-  const fetchStatus = useCallback(
-    async (id: string) => {
-      try {
-        const response = await fetch(`${apiBase}/processing-status?job_id=${id}`, { cache: "no-store" });
-        if (!response.ok) {
-          setError("Unable to fetch status.");
-          setJobStatus("error");
-          stopPolling();
-          return;
-        }
-
-        const payload = (await response.json()) as {
-          status: string;
-          progress: number;
-          detail?: string;
-          output_formats?: string[];
-        };
-
-        const backendStatus = (payload.status || "").toLowerCase();
-        setStatusLabel(payload.status || null);
-        setProcessingDetail(payload.detail || null);
-        setAvailableFormats(payload.output_formats || []);
-        setUploadProgress(Math.min(100, Math.max(0, Math.round((payload.progress ?? 0) * 100))));
-
-        if (backendStatus === "completed" || backendStatus === "done") {
-          setJobStatus("done");
-          setStatusLabel("completed");
-          stopPolling();
-          return;
-        }
-
-        if (backendStatus === "failed" || backendStatus === "error") {
-          setJobStatus("error");
-          setError(payload.detail || "Processing failed.");
-          stopPolling();
-          return;
-        }
-
-        setJobStatus("processing");
-      } catch (e) {
-        setJobStatus("error");
-        setError(e instanceof Error ? e.message : "Status check failed");
-        stopPolling();
-      }
-    },
-    [apiBase]
-  );
-
+  // Poll for status updates
   useEffect(() => {
-    stopPolling();
     if (!jobId) return;
-    if (jobStatus === "done" || jobStatus === "error") return;
-    pollTimerRef.current = setTimeout(() => fetchStatus(jobId), 3000);
-    return stopPolling;
-  }, [jobId, jobStatus, fetchStatus]);
-
-  const startJob = (id: string) => {
-    setJobId(id);
-    setJobStatus("processing");
-    setError(null);
-    setAvailableFormats([]);
-    setStatusLabel("processing");
-    setProcessingDetail("Job accepted");
-    setUploadProgress(1);
-    fetchStatus(id);
-  };
-
-  const handleUpload = () => {
-    if (!selectedVideoFiles.length) {
-      setError("Please select at least one video file to upload.");
+    
+    // Stop polling if done or failed
+    if (jobStatus === "done" || jobStatus === "failed" || jobStatus === "error") {
       return;
     }
 
-    setError(null);
-    setUploadProgress(0);
-    setStatusLabel("Uploading…");
-    setProcessingDetail("Uploading files");
-    setJobStatus("uploading");
-    setAvailableFormats([]);
+    const pollInterval = setInterval(async () => {
+      try {
+        const response = await fetch(`/api/processing-status?job_id=${jobId}`);
+        if (!response.ok) {
+          console.error("Status check failed");
+          return;
+        }
+
+        const data = await response.json();
+        console.log("Status update:", data); // Debug log
+        
+        setJobStatus(data.status as JobStatus);
+        setProgress(Math.round(data.progress * 100));
+        setDetail(data.detail || "");
+        if (data.output_formats) {
+          setOutputFormats(data.output_formats);
+        }
+      } catch (error) {
+        console.error("Polling error:", error);
+      }
+    }, 1000); // Poll every 1 second
+
+    return () => clearInterval(pollInterval);
+  }, [jobId]); // Remove jobStatus from dependencies to keep polling active
+
+  const handleUploadClick = async () => {
+    if (selectedFiles.length === 0) {
+      alert("Please select files");
+      return;
+    }
 
     const formData = new FormData();
-    selectedVideoFiles.forEach((file) => formData.append("files", file));
+    selectedFiles.forEach((file) => {
+      formData.append("files", file);
+    });
 
-    const request = new XMLHttpRequest();
-    request.open("POST", `${apiBase}/upload-video?merge_videos=${mergeUploads}&output_format=${uploadFormat}`);
+    const params = new URLSearchParams({
+      merge_videos: "false",
+      output_format: DEFAULT_FORMAT,
+    });
 
-    request.upload.onprogress = (event) => {
-      if (event.lengthComputable) setUploadProgress(Math.max(1, Math.round((event.loaded / event.total) * 100)));
-    };
-
-    request.onload = () => {
-      if (request.status >= 200 && request.status < 300) {
-        const response = JSON.parse(request.responseText) as { job_id: string };
-        startJob(response.job_id);
-      } else {
-        setError("Upload failed. Please try again.");
-        setJobStatus("error");
-      }
-    };
-
-    request.onerror = () => {
-      setError("Upload failed. Please check your connection.");
-      setJobStatus("error");
-    };
-
-    request.send(formData);
-  };
-
-  const handleFileChange = (event: React.ChangeEvent<HTMLInputElement>) => {
-    const files = event.target.files ? Array.from(event.target.files) : [];
-    setSelectedVideoFiles(files);
-  };
-
-  const handleLink = async () => {
-    if (!link.trim()) {
-      setError("Please enter a video or playlist URL.");
-      return;
-    }
-    setError(null);
-    setStatusLabel("Submitting link…");
-    setProcessingDetail("Submitting link");
-    setUploadProgress(1);
-    setJobStatus("uploading");
-    setAvailableFormats([]);
     try {
-      const response = await fetch(`${apiBase}/upload-link`, {
+      const response = await fetch(`/api/upload-video?${params}`, {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ url: link.trim(), merge_videos: mergeLinks, output_format: linkFormat }),
+        body: formData,
       });
 
       if (!response.ok) {
-        const payload = await response.json().catch(() => ({}));
-        setError((payload as { detail?: string }).detail || "Failed to submit link.");
-        setJobStatus("error");
-        return;
+        throw new Error("Upload failed");
       }
 
-      const payload = (await response.json()) as { job_id: string };
-      startJob(payload.job_id);
+      const data = await response.json();
+      setJobId(data.job_id);
+      setJobStatus("uploading");
+      setProgress(0);
     } catch (error) {
-      setError(error instanceof Error ? `Failed to submit link. ${error.message}` : "Failed to submit link.");
+      console.error("Upload error:", error);
       setJobStatus("error");
+      setDetail("Upload failed");
     }
   };
 
-  const refreshStatus = () => {
-    if (!jobId) return;
-    fetchStatus(jobId);
+  const handlePasteLink = async () => {
+    if (!link) {
+      alert("Please paste a link");
+      return;
+    }
+
+    const params = new URLSearchParams({
+      merge_videos: "false",
+      output_format: DEFAULT_FORMAT,
+    });
+
+    try {
+      const response = await fetch(`/api/upload-link?${params}`, {
+        method: "POST",
+        body: JSON.stringify({ url: link }),
+        headers: { "Content-Type": "application/json" },
+      });
+
+      if (!response.ok) {
+        throw new Error("Link upload failed");
+      }
+
+      const data = await response.json();
+      setJobId(data.job_id);
+      setJobStatus("processing");
+      setProgress(5);
+    } catch (error) {
+      console.error("Link upload error:", error);
+      setJobStatus("error");
+      setDetail("Link upload failed");
+    }
+  };
+
+  const handleRefresh = () => {
+    if (jobId) {
+      // Manually trigger a status check
+      fetch(`/api/processing-status?job_id=${jobId}`)
+        .then((res) => res.json())
+        .then((data) => {
+          setJobStatus(data.status);
+          setProgress(Math.round(data.progress * 100));
+          setDetail(data.detail || "");
+          if (data.output_formats) {
+            setOutputFormats(data.output_formats);
+          }
+        })
+        .catch((error) => console.error("Refresh error:", error));
+    }
+  };
+
+  const handleDownload = (format: string) => {
+    if (jobId) {
+      window.location.href = `/api/download-document?job_id=${jobId}&format=${format}`;
+    }
   };
 
   return (
-    <div className="min-h-screen bg-slate-950 text-slate-100">
-      <main className="mx-auto flex w-full max-w-3xl flex-col gap-8 px-6 py-12">
-        <header className="space-y-3">
-          <p className="text-xs uppercase tracking-[0.2em] text-slate-400">Video2Knowledge AI</p>
-          <h1 className="text-3xl font-semibold md:text-4xl">Turn long videos into structured knowledge documents.</h1>
-        </header>
+    <div className="min-h-screen bg-gradient-to-b from-slate-950 to-slate-900 p-8">
+      <div className="max-w-4xl mx-auto space-y-8">
+        {/* Step 1 */}
+        <div className="rounded-lg border border-slate-700 bg-slate-900/50 p-6">
+          <h2 className="text-2xl font-bold text-white mb-6">Step 1 — Choose your input</h2>
 
-        {/* Step 1: Input */}
-        <section className="rounded-2xl border border-slate-800 bg-slate-900/60 p-6 space-y-5">
-          <h2 className="text-lg font-semibold">Step 1 — Choose your input</h2>
-
-          <div className="flex gap-1 rounded-lg border border-slate-700 bg-slate-950 p-1 w-fit">
-            <button onClick={() => setActiveTab("upload")} className={`rounded-md px-4 py-1.5 text-sm ${activeTab === "upload" ? "bg-indigo-500 text-white" : "text-slate-400"}`}>Upload File</button>
-            <button onClick={() => setActiveTab("link")} className={`rounded-md px-4 py-1.5 text-sm ${activeTab === "link" ? "bg-indigo-500 text-white" : "text-slate-400"}`}>Paste Link</button>
+          <div className="flex gap-3 mb-6">
+            <button
+              onClick={() => setActiveTab("upload")}
+              className={`px-6 py-2 rounded-lg font-medium transition ${
+                activeTab === "upload"
+                  ? "bg-blue-600 text-white"
+                  : "bg-slate-800 text-slate-300 hover:bg-slate-700"
+              }`}
+            >
+              Upload File
+            </button>
+            <button
+              onClick={() => setActiveTab("link")}
+              className={`px-6 py-2 rounded-lg font-medium transition ${
+                activeTab === "link"
+                  ? "bg-blue-600 text-white"
+                  : "bg-slate-800 text-slate-300 hover:bg-slate-700"
+              }`}
+            >
+              Paste Link
+            </button>
           </div>
 
           {activeTab === "upload" ? (
             <div className="space-y-4">
               <input
-  type="file"
-  multiple
-  accept="video/*"
-  onChange={e => {
-    const files = e.target.files ? Array.from(e.target.files) : [];
-    setSelectedVideoFiles(files);
-  }}
-  className="w-full rounded-lg border border-slate-700 bg-slate-950 px-4 py-2 text-sm"
-/>
-              <div className="flex items-center gap-4 text-sm">
-                <label className="flex items-center gap-2">
-                  <input type="checkbox" checked={mergeUploads} onChange={(e) => setMergeUploads(e.target.checked)} />
-                  Merge into one document
-                </label>
-                <select value={uploadFormat} onChange={(e) => setUploadFormat(e.target.value)} className="rounded-lg border border-slate-700 bg-slate-950 px-3 py-1.5 text-sm">
-                  {formatOptions.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
-                </select>
-              </div>
-              <button onClick={handleUpload} disabled={isActive} className="w-full rounded-lg bg-indigo-500 px-4 py-2.5 text-sm font-semibold text-white disabled:opacity-50">
-                {isActive ? "Processing…" : "Start Upload"}
+                type="file"
+                multiple
+                accept="video/*"
+                onChange={(e) => setSelectedFiles(Array.from(e.target.files || []))}
+                className="w-full rounded-lg border border-slate-700 bg-slate-950 px-4 py-2 text-sm text-slate-300"
+              />
+              <button
+                onClick={handleUploadClick}
+                className="w-full bg-blue-600 hover:bg-blue-700 text-white font-bold py-3 rounded-lg transition"
+              >
+                Start Upload
               </button>
             </div>
           ) : (
             <div className="space-y-4">
-              <input value={link} onChange={(e) => setLink(e.target.value)} placeholder="https://www.youtube.com/watch?v=…" className="w-full rounded-lg border border-slate-700 bg-slate-950 px-4 py-2 text-sm" />
-              <div className="flex items-center gap-4 text-sm">
-                <label className="flex items-center gap-2">
-                  <input type="checkbox" checked={mergeLinks} onChange={(e) => setMergeLinks(e.target.checked)} />
-                  Merge playlist videos
-                </label>
-                <select value={linkFormat} onChange={(e) => setLinkFormat(e.target.value)} className="rounded-lg border border-slate-700 bg-slate-950 px-3 py-1.5 text-sm">
-                  {formatOptions.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
-                </select>
-              </div>
-              <button onClick={handleLink} disabled={isActive} className="w-full rounded-lg bg-emerald-500 px-4 py-2.5 text-sm font-semibold text-white disabled:opacity-50">
-                {isActive ? "Processing…" : "Submit Link"}
+              <input
+                value={link}
+                onChange={(e) => setLink(e.target.value)}
+                placeholder="https://www.youtube.com/watch?v=…"
+                className="w-full rounded-lg border border-slate-700 bg-slate-950 px-4 py-2 text-sm text-slate-300"
+              />
+              <button
+                onClick={handlePasteLink}
+                className="w-full bg-blue-600 hover:bg-blue-700 text-white font-bold py-3 rounded-lg transition"
+              >
+                Process Link
               </button>
             </div>
           )}
-        </section>
+        </div>
 
-        {/* Step 2: Processing status */}
-        <section className="rounded-2xl border border-slate-800 bg-slate-900/60 p-6 space-y-4">
-          <div className="flex items-center justify-between">
-            <h2 className="text-lg font-semibold">Step 2 — Processing status</h2>
-            <button onClick={refreshStatus} disabled={!jobId} className="rounded-lg border border-slate-700 px-3 py-1.5 text-xs">Refresh</button>
+        {/* Step 2 */}
+        <div className="rounded-lg border border-slate-700 bg-slate-900/50 p-6">
+          <div className="flex justify-between items-center mb-6">
+            <h2 className="text-2xl font-bold text-white">Step 2 — Processing status</h2>
+            <button
+              onClick={handleRefresh}
+              className="px-4 py-2 rounded-lg border border-slate-600 text-slate-300 hover:bg-slate-800 transition"
+            >
+              Refresh
+            </button>
           </div>
-          <p className="text-sm text-slate-400">Job ID: <span className="font-mono text-slate-300">{jobId || "—"}</span></p>
-          <div className="mb-1 flex items-center justify-between text-xs text-slate-400">
-            <span>{statusLabel || "Waiting for input…"}</span>
-            <span>{uploadProgress}%</span>
-          </div>
-          <div className="h-2 w-full overflow-hidden rounded-full bg-slate-800">
-            <div className={`h-full rounded-full transition-all ${jobStatus === "done" ? "bg-emerald-400" : "bg-indigo-400"}`} style={{ width: `${uploadProgress}%` }} />
-          </div>
-          {processingDetail && <p className="text-xs text-slate-500">{processingDetail}</p>}
-          {jobStatus === "done" && <p className="text-sm text-emerald-300">✓ Processing complete</p>}
-          {error && <p className="text-sm text-red-300">{error}</p>}
-        </section>
 
-        {/* Step 3: Download */}
-        <section className="rounded-2xl border border-slate-800 bg-slate-900/60 p-6 space-y-4">
-          <h2 className="text-lg font-semibold">Step 3 — Download your document</h2>
-          {availableFormats.length > 0 && jobId ? (
+          {jobId && (
+            <div className="space-y-4">
+              <div className="text-sm text-slate-400">Job ID: {jobId}</div>
+              <div className="flex items-center justify-between mb-2">
+                <span className="text-sm font-medium text-slate-300">{jobStatus}</span>
+                <span className="text-sm text-slate-400">{progress}%</span>
+              </div>
+              <div className="w-full bg-slate-800 rounded-full h-2">
+                <div
+                  className="bg-blue-600 h-2 rounded-full transition-all"
+                  style={{ width: `${progress}%` }}
+                />
+              </div>
+              {detail && <div className="text-sm text-slate-400">{detail}</div>}
+            </div>
+          )}
+        </div>
+
+        {/* Step 3 */}
+        <div className="rounded-lg border border-slate-700 bg-slate-900/50 p-6">
+          <h2 className="text-2xl font-bold text-white mb-6">Step 3 — Download your document</h2>
+
+          {jobStatus === "done" && outputFormats.length > 0 ? (
             <div className="flex flex-wrap gap-3">
-              {availableFormats.map((format) => (
-                <a key={format} href={`${apiBase}/download-document?job_id=${jobId}&output_format=${format}`} className="rounded-lg border border-indigo-500/50 bg-indigo-500/10 px-5 py-2 text-sm font-semibold uppercase text-indigo-300">
-                  ↓ {format}
-                </a>
+              {outputFormats.map((format) => (
+                <button
+                  key={format}
+                  onClick={() => handleDownload(format)}
+                  className="px-6 py-3 bg-green-600 hover:bg-green-700 text-white font-bold rounded-lg transition"
+                >
+                  Download {format.toUpperCase()}
+                </button>
               ))}
             </div>
           ) : (
-            <p className="text-sm text-slate-500">Download links will appear here once processing is complete.</p>
+            <p className="text-slate-400">Download links will appear here once processing is complete.</p>
           )}
-        </section>
-      </main>
+        </div>
+      </div>
     </div>
   );
 }

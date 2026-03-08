@@ -1,19 +1,52 @@
 from __future__ import annotations
 
-from app.services.models import FrameDescription, FrameText, Transcript
+import logging
+from typing import Any
 
+logger = logging.getLogger(__name__)
 
-def fuse_modalities(transcript: Transcript, ocr_text: list[FrameText], visuals: list[FrameDescription]) -> str:
-    transcript_text = " ".join(segment.text for segment in transcript.segments)
-    ocr_section = " ".join(item.text for item in ocr_text)
-    visuals_section = " ".join(item.description for item in visuals)
-    return "\n".join(
-        [
-            "Transcript Highlights:",
-            transcript_text,
-            "OCR Extracts:",
-            ocr_section,
-            "Visual Descriptions:",
-            visuals_section,
-        ]
-    )
+def fuse(transcript: str, frame_insights: list[dict], video_path: str) -> dict[str, Any]:
+    """Intelligently combine audio transcript with visual scene descriptions."""
+    try:
+        logger.info("Fusing multimodal data...")
+        
+        if not transcript or not transcript.strip():
+            logger.warning("Empty transcript")
+            return {
+                "transcript": "",
+                "frame_insights": frame_insights,
+                "combined_knowledge": "No audio content detected in video.",
+                "video_path": video_path
+            }
+        
+        # The transcript IS the main content for students
+        # We just enhance it with any visual context
+        combined = transcript
+        
+        # If we have meaningful scene descriptions, add them as context
+        if frame_insights:
+            real_scenes = [f for f in frame_insights 
+                          if f.get("description", "").lower() not in ['opening', 'middle', 'summary', '']]
+            
+            if real_scenes:
+                combined += "\n\nVisual Context from Video:\n"
+                for scene in real_scenes:
+                    desc = scene.get("description", "").strip()
+                    if desc and desc.lower() not in ['opening', 'middle', 'summary']:
+                        combined += f"- {desc}\n"
+        
+        return {
+            "transcript": transcript,
+            "frame_insights": frame_insights,
+            "combined_knowledge": combined,
+            "video_path": video_path
+        }
+        
+    except Exception as e:
+        logger.exception(f"Fusion error: {e}")
+        return {
+            "transcript": transcript,
+            "frame_insights": frame_insights,
+            "combined_knowledge": transcript,
+            "video_path": video_path
+        }

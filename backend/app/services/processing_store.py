@@ -30,6 +30,7 @@ class ProcessingStore:
         status: str | None = None,
         progress: float | None = None,
         detail: str | None = None,
+        output_formats: list[str] | None = None,
     ) -> None:
         with self._lock:
             record = self._store[job_id]
@@ -39,6 +40,8 @@ class ProcessingStore:
                 record.progress = max(0.0, min(1.0, float(progress)))
             if detail is not None:
                 record.detail = detail
+            if output_formats is not None:
+                record.output_formats = output_formats
 
     def set_result(self, job_id: str, result: Any, output_formats: list[str]) -> None:
         with self._lock:
